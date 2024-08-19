@@ -41,8 +41,8 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.applications import ResNet50
 
 # Define paths
-train_images_dir = './train'  # Update if using a different path
-train_labels_path = './trainLabels.csv'  # Update with the correct path
+train_images_dir = './train'
+train_labels_path = './trainLabels.csv'
 
 # Function to organize images into class directories
 def organize_images(base_dir, labels_file):
@@ -116,3 +116,117 @@ except Exception as e:
 # Save the trained model
 model.save('./model/model.keras')  # Save in Keras format
 print("Model saved to ./model/model.keras")
+
+#-------------------------------------------------------------------------------------------------
+
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
+from tensorflow.keras.models import load_model
+from tensorflow.keras.applications import ResNet50
+import tensorflow as tf
+
+# Define paths
+train_images_dir = './train'
+test_images_dir = './test'
+train_labels_path = './trainLabels.csv'
+sample_submission_path = './sampleSubmission.csv'
+submission_path = './submission.csv'
+
+# Data Augmentation and Normalization for Test Data
+def create_test_datagen():
+    datagen = ImageDataGenerator(
+        rescale=1./255  # Normalize pixel values
+    )
+    return datagen
+
+# Load the trained model
+model = load_model('/kaggle/working/model.keras')
+
+# Create Test Data Generator
+test_datagen = create_test_datagen()
+test_generator = test_datagen.flow_from_directory(
+    directory=test_images_dir,
+    target_size=(224, 224),  # Adjust size according to model
+    batch_size=32,
+    class_mode=None,  # No labels in test data
+    shuffle=False,  # Important for correct predictions
+    seed=42
+)
+
+# Predict on test data
+predictions = model.predict(test_generator, verbose=1)
+
+# Get class labels
+class_labels = list(test_generator.class_indices.keys())
+
+# Convert predictions to labels
+predicted_classes = np.argmax(predictions, axis=1)
+predicted_labels = [class_labels[i] for i in predicted_classes]
+
+# Create submission DataFrame
+submission_df = pd.DataFrame({
+    'id': [f"{i+1}" for i in range(len(predicted_labels))],
+    'label': predicted_labels
+})
+
+# Save submission file
+submission_df.to_csv(submission_path, index=False)
+print(f"Submission file saved to {submission_path}")
+
+# Plot training history
+def plot_history(history):
+    plt.figure(figsize=(12, 6))
+    
+    # Plot Loss
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['loss'], label='Training Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.title('Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    # Plot Accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['accuracy'], label='Training Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.title('Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    
+    plt.show()
+
+# Load the training history from a saved file if available
+# history = pd.read_csv('./history.csv')  # Assuming history is saved
+
+# Sample test images and predictions
+def plot_sample_images(test_dir, predictions, num_samples=10):
+    sample_files = os.listdir(test_dir)
+    sample_files = np.random.choice(sample_files, num_samples, replace=False)
+    
+    plt.figure(figsize=(15, 10))
+    
+    for i, file in enumerate(sample_files):
+        img_path = os.path.join(test_dir, file)
+        img = load_img(img_path, target_size=(224, 224))
+        img_array = img_to_array(img)
+        img_array = np.expand_dims(img_array, axis=0)
+        img_array /= 255.0  # Normalize for prediction
+
+        pred = model.predict(img_array)
+        predicted_class = np.argmax(pred)
+        label = class_labels[predicted_class]
+
+        plt.subplot(2, 5, i+1)
+        plt.imshow(img_array[0])
+        plt.title(f"Pred: {label}")
+        plt.axis('off')
+
+    plt.show()
+
+# Plot sample images with predictions
+plot_sample_images(test_images_dir, predictions)
